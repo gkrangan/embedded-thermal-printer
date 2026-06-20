@@ -18,11 +18,11 @@ A Python CLI and GUI application to control the **Maikrt MC206H** embedded 58mm 
 | Default baud rate | **9600** |
 | Printer mode | Receipts |
 
-The self-test printout (hold the paper-feed button while powering on) confirms ESC/POS mode and 9600 baud.
+Run the printer self-test (hold the paper-feed button while powering on) to confirm the baud rate and mode printed on the self-test receipt.
 
 ### USB-to-TTL Adapter
 
-A standard **FTDI FT232RL** USB-serial adapter (red breakout board) is used to bridge the Mac's USB port to the printer's TTL UART interface.
+A standard **FTDI FT232RL** USB-serial adapter (red breakout board) bridges the Mac's USB port to the printer's TTL UART interface.
 
 On macOS the adapter enumerates as:
 
@@ -36,25 +36,21 @@ On macOS the adapter enumerates as:
 
 ## Wiring
 
-The printer exposes a **4-wire JST connector** for the TTL interface. Pin order (left to right when facing the back of the printer, JST side):
+The printer exposes a **4-wire JST connector** for the TTL interface. Pin order (left to right when facing the back of the printer):
 
 | Printer wire | Signal | FTDI pin |
 |-------------|--------|----------|
 | Black | GND | GND |
 | Yellow | RXD (printer receives) | TXD |
 | Red | TXD (printer transmits) | RXD |
-| — | VCC (do **not** power from FTDI) | — |
+| — | VCC | Do **not** power from FTDI |
 
-> **Power the printer separately** from a 5V–9V DC supply via its barrel-jack connector. Do not try to power the print head from the FTDI 3.3V/5V rail — the stepper and head draw far more current than any USB adapter can supply.
-
-**Summary:**
+> **Power the printer separately** from a 5V–9V DC supply via its barrel-jack connector. The FTDI 5V rail cannot supply enough current for the print head.
 
 ```
 Mac USB → FTDI adapter → jumper wires → printer TTL JST connector
-                                        (GND ↔ GND, TX ↔ RX, RX ↔ TX)
+                                        GND↔GND  TX→RX  RX←TX
 ```
-
-The FTDI board's blue LED indicates USB enumeration. The printer's green LED indicates it is powered and ready.
 
 ---
 
@@ -65,20 +61,17 @@ The FTDI board's blue LED indicates USB enumeration. The printer's green LED ind
 - Python 3.10+
 - `pyserial` — serial communication
 - `click` — CLI framework
-- `customtkinter` — modern Tkinter GUI
-- `Pillow` — image processing for raster printing
+- `customtkinter` — GUI
+- `Pillow` — image processing
 
 ### Installation
 
 ```bash
 git clone https://github.com/gkrangan/embedded-thermal-printer.git
 cd embedded-thermal-printer
-
-python3 -m venv .venv
-source .venv/bin/activate
-
-pip install -r requirements.txt
 ```
+
+No manual setup needed — the `thermal-printer` wrapper handles everything on first run.
 
 ---
 
@@ -87,88 +80,105 @@ pip install -r requirements.txt
 ```
 embedded-thermal-printer/
 ├── thermal_printer/
-│   ├── __init__.py      # Package exports (ThermalPrinter, Align, Size, Font)
+│   ├── __init__.py      # Package exports
 │   ├── printer.py       # ThermalPrinter class — serial connection + high-level API
-│   ├── escpos.py        # Low-level ESC/POS command builders
+│   ├── escpos.py        # ESC/POS command builders
 │   └── image.py         # PIL image → 1-bit raster converter (384 dots wide)
-├── cli.py               # Click-based CLI
+├── thermal-printer      # Shell wrapper (use this — handles venv + deps automatically)
+├── cli.py               # Click CLI (called by the wrapper)
 ├── gui.py               # customtkinter GUI
 └── requirements.txt
 ```
 
 ---
 
-## CLI Usage
+## Usage
+
+Use the `thermal-printer` wrapper for everything. It creates a Python virtual environment and installs dependencies automatically on first run.
 
 ```bash
-source .venv/bin/activate
-
-# Auto-detects FTDI port; override with --port if needed
-python cli.py [--port /dev/cu.usbserial-XXXXXXXX] [--baud 9600] COMMAND
+./thermal-printer COMMAND "your text" [OPTIONS]
 ```
 
 ### Commands
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `list-ports` | Show all serial ports | `python cli.py list-ports` |
-| `text TEXT` | Print a single line | `python cli.py text "Hello" --bold --align center` |
-| `multiline FILE` | Print lines from a file or stdin | `python cli.py multiline receipt.txt` |
-| `image PATH` | Print an image (PNG/JPG/BMP) | `python cli.py image logo.png` |
-| `qr DATA` | Print a QR code | `python cli.py qr "https://example.com"` |
-| `barcode DATA` | Print a barcode (Code128/39) | `python cli.py barcode "123456" --type code128` |
-| `feed [N]` | Feed N blank lines | `python cli.py feed 5` |
-| `cut` | Cut the paper | `python cli.py cut --full` |
-| `reset` | Send ESC @ initialise | `python cli.py reset` |
-| `demo` | Print a full test receipt | `python cli.py demo` |
+| Command | Description |
+|---------|-------------|
+| `text "Hello World"` | Print plain text |
+| `barcode "1234567"` | Print as a barcode (max 7 chars — see notes below) |
+| `qr "https://example.com"` | Print as a QR code |
+| `demo` | Print a full test receipt |
+| `ports` | List available serial ports |
+| `cut` | Cut the paper |
+| `help` | Show usage |
 
-#### Text formatting options
+### Options
 
-```bash
-python cli.py text "Big Title" \
-  --align center \
-  --bold \
-  --underline \
-  --size double-w \
-  --cut
-```
+| Option | Applies to | Description |
+|--------|-----------|-------------|
+| `--bold` | `text` | Bold text |
+| `--center` | `text` | Centre-align |
+| `--no-cut` | all | Keep paper attached after printing |
 
-`--size` choices: `normal` · `double-h` · `double-w` · `double`  
-`--align` choices: `left` · `center` · `right`
-
-#### Print from stdin
+### Examples
 
 ```bash
-echo -e "Line 1\nLine 2\nLine 3" | python cli.py multiline -
+# Text
+./thermal-printer text "Hello, World!"
+./thermal-printer text "Total: $9.99" --bold --center
+./thermal-printer text "See you soon!" --no-cut
+
+# Barcode (max 7 chars; longer data automatically prints as QR instead)
+./thermal-printer barcode "1234567"
+
+# QR code (no length limit)
+./thermal-printer qr "https://github.com/gkrangan/embedded-thermal-printer"
+./thermal-printer qr "12345678901234"
+
+# Utilities
+./thermal-printer demo
+./thermal-printer ports
+./thermal-printer cut
 ```
 
 ---
 
-## GUI Usage
+## MC206H Printer — Confirmed Behaviour
 
-```bash
-source .venv/bin/activate
-python gui.py
-```
+The following was established through live hardware testing. These are **not** general ESC/POS behaviours — they are specific to this printer model.
 
-The GUI has four tabs:
+### Serial / ESC @ initialisation
 
-### Text tab
-Type or paste multi-line text. Choose alignment, size, bold, underline, and whether to auto-cut after printing.
+| Finding | Detail |
+|---------|--------|
+| `ESC @` command | **Triggers a self-test print** on this printer — do not send on connect |
+| Baud rate | 9600 (confirmed via self-test receipt) |
+| Flow control | None (CTS/DSR not asserted) |
 
-### Image tab
-Browse for any image file. A preview is shown before printing. The image is automatically scaled to 384 dots wide and dithered to 1-bit for thermal printing.
+### Text printing
 
-### QR / Barcode tab
-- Enter a URL or string → print a QR code (adjustable cell size 1–16)
-- Enter alphanumeric data → print a Code128 or Code39 barcode
+Works correctly with standard ESC/POS text commands and a line-feed (`\x0a`) terminator.
 
-### Utilities tab
-- Feed N lines
-- Full cut / Partial cut
-- Reset printer (ESC @)
-- Print demo receipt
-- Adjust print density (0 = lightest … 8 = darkest) and apply live
+### Barcode printing (Code39)
+
+| Finding | Detail |
+|---------|--------|
+| Command format | Old-style NUL-terminated: `GS k` + type + data + `\x00` |
+| New-style format | **Does not work** (length-prefixed `GS k m n d…` is silently ignored) |
+| `ESC a` before barcode | **Kills the barcode** — printer silently drops it |
+| Maximum data length | **7 characters** — 8 chars fits the paper width but HRI only displays 7 |
+| HRI position | Must be **above** (`GS H 1`) — HRI below gets cut off before it is visible |
+| HRI character support | Digits only — alphabetic characters suppress HRI on this printer |
+| Render delay | A **1.5 second delay** is required between the barcode command and the next command (feed/cut), otherwise the printer drops the output |
+| Long data fallback | Data longer than 7 chars automatically falls back to a QR code |
+
+### QR code printing
+
+| Finding | Detail |
+|---------|--------|
+| Command | `GS ( k` — confirmed working |
+| Render delay | A **1.5 second delay** is required between the QR render command and the next command (feed/cut) |
+| Data length | No practical limit tested |
 
 ---
 
@@ -181,9 +191,8 @@ with ThermalPrinter("/dev/cu.usbserial-A1083DD0", baud=9600) as p:
     p.print_text("RECEIPT", align=Align.CENTER, bold=True, size=Size.DOUBLE_W)
     p.print_divider()
     p.print_text("Item 1          $5.00")
-    p.print_text("Item 2          $3.50")
-    p.print_divider()
-    p.print_text("TOTAL           $8.50", bold=True)
+    p.print_text("Total           $5.00", bold=True)
+    p.print_barcode("1234567")
     p.print_qr("https://example.com/receipt/123")
     p.cut()
 ```
@@ -198,50 +207,36 @@ with ThermalPrinter(port) as p:
 
 ---
 
-## ESC/POS Command Reference
-
-The `thermal_printer/escpos.py` module exposes the following builders:
-
-| Function | Description |
-|----------|-------------|
-| `INIT` | ESC @ — initialise / reset |
-| `feed(n)` | ESC d n — feed n lines |
-| `cut(partial)` | GS V — cut paper |
-| `set_align(Align)` | ESC a — left / centre / right |
-| `set_bold(bool)` | ESC E — bold on/off |
-| `set_underline(bool)` | ESC - — underline on/off |
-| `set_size(Size)` | GS ! — normal / double-H / double-W / double |
-| `set_font(Font)` | ESC M — font A or B |
-| `set_density(0–8)` | GS \| — print density |
-| `raster_image(...)` | GS v 0 — raster bitmap print |
-| `qr_code(data, size)` | GS ( k — QR code model 2 |
-| `barcode(data, type)` | GS k — Code128 / Code39 barcode |
-
----
-
 ## Troubleshooting
 
-### Nothing prints / garbled output
+### Nothing prints
 
-1. Confirm port with `python cli.py list-ports` and pass it explicitly via `--port`.
-2. Run the printer self-test (hold feed button while powering on) — confirms baud rate. Default is **9600**.
-3. Try `--baud 19200` or `--baud 38400` if 9600 produces no output.
-4. Verify TX/RX are **crossed** between FTDI and printer (FTDI TX → printer RX, FTDI RX → printer TX).
-5. Make sure GND is shared between the FTDI adapter and the printer power supply.
+1. Run `./thermal-printer ports` — confirm the FTDI adapter appears.
+2. Check TX/RX are **crossed** (FTDI TX → printer RX, FTDI RX → printer TX).
+3. Confirm GND is shared between FTDI and printer power supply.
+4. Try `--baud 19200` if 9600 produces no response.
 
-### Paper feeds but nothing is printed
+### Paper feeds but nothing is printed on it
 
-- The printer is receiving data but the thermal head isn't activating — likely a power supply issue. Use a dedicated 5V/2A+ supply on the barrel jack.
+The thermal head is not activating. Use a dedicated 5V/2A+ supply on the barrel jack — the FTDI 5V rail cannot drive the print head.
 
-### `Permission denied` on serial port (Linux)
+### Barcode prints but no text above it
+
+Data contains alphabetic characters. This printer only shows HRI text for digit-only barcode data.
+
+### QR or barcode appears blank / gets cut through
+
+The printer needs time to render before the next command. The 1.5 second delay is built into the library — if you are calling ESC/POS commands directly, add `time.sleep(1.5)` after the render command.
+
+### Self-test prints unexpectedly
+
+Do not send `ESC @` (`\x1b\x40`) to this printer — it triggers a full self-test print rather than a silent reset.
+
+### Permission denied on serial port (Linux)
 
 ```bash
-sudo usermod -aG dialout $USER   # then log out and back in
+sudo usermod -aG dialout $USER   # log out and back in after
 ```
-
-### Image is too light / dark
-
-Use `python cli.py` → Utilities tab → density slider, or call `p.set_density(6)` in code before printing.
 
 ---
 
