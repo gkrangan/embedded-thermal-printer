@@ -1,219 +1,143 @@
 #!/usr/bin/env bash
-# =============================================================================
-#  printer — wrapper for the Maikrt MC206H thermal printer CLI
-#
-#  Handles venv creation, dependency installation, and then delegates every
-#  argument to cli.py.  Run this script instead of calling cli.py directly.
-#
-#  Usage:  ./printer [OPTIONS] COMMAND [ARGS]...
-#          ./printer help
-#          ./printer help COMMAND
-# =============================================================================
+# thermal-printer — print text, barcodes, and QR codes on the Maikrt MC206H
 
 set -euo pipefail
-
-# ── Paths ────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"
 PYTHON="$VENV_DIR/bin/python"
-PIP="$VENV_DIR/bin/pip"
-REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
 CLI="$SCRIPT_DIR/cli.py"
+REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
 
-# ── Colours ──────────────────────────────────────────────────────────────────
+# ── Colour support ────────────────────────────────────────────────────────────
+if [ -t 1 ] && command -v tput &>/dev/null; then
+    BOLD=$(tput bold); DIM=$(tput dim 2>/dev/null || true)
+    CYAN=$(tput setaf 6); RESET=$(tput sgr0)
+else
+    BOLD=""; DIM=""; CYAN=""; RESET=""
+fi
 
-BOLD="\033[1m"
-DIM="\033[2m"
-CYAN="\033[0;36m"
-GREEN="\033[0;32m"
-YELLOW="\033[0;33m"
-RED="\033[0;31m"
-RESET="\033[0m"
-
-info()    { echo -e "${CYAN}[printer]${RESET} $*"; }
-success() { echo -e "${GREEN}[printer]${RESET} $*"; }
-warn()    { echo -e "${YELLOW}[printer]${RESET} $*"; }
-error()   { echo -e "${RED}[printer] Error:${RESET} $*" >&2; }
-
-# ── Built-in help (shown before Python is ready) ──────────────────────────────
-
+# ── Help ──────────────────────────────────────────────────────────────────────
 show_help() {
 cat <<EOF
 
-${BOLD}printer${RESET} — Maikrt MC206H Thermal Printer Controller
-${DIM}Maikrt MC206H · 58 mm · ESC/POS · TTL via FTDI USB adapter${RESET}
+${BOLD}thermal-printer${RESET} — Maikrt MC206H 58mm thermal printer
 
 ${BOLD}USAGE${RESET}
-  ./printer [--port PORT] [--baud RATE] COMMAND [OPTIONS] [ARGS]
-  ./printer help
-  ./printer help COMMAND
-
-${BOLD}SETUP${RESET}
-  This script automatically creates a Python virtual environment (.venv/)
-  and installs all required packages the first time it is run.
-  No manual pip or venv setup is needed.
-
-${BOLD}HARDWARE${RESET}
-  • Power the printer from a 5 V–9 V DC supply (barrel jack)
-  • Connect the FTDI USB-TTL adapter:  FTDI TX → Printer RX
-                                        FTDI RX → Printer TX
-                                        FTDI GND → Printer GND
-  • Default serial port : /dev/cu.usbserial-A1083DD0
-  • Default baud rate   : 9600
-  • Run the printer self-test (hold feed button while powering on) to
-    confirm the baud rate printed on the self-test receipt.
-
-${BOLD}GLOBAL OPTIONS${RESET}  (must appear before the command)
-  -p, --port PORT    Serial port  [default: /dev/cu.usbserial-A1083DD0]
-  -b, --baud RATE    Baud rate    [default: 9600]
-  -h, --help         Show this help message
+  ./thermal-printer COMMAND "your text" [OPTIONS]
 
 ${BOLD}COMMANDS${RESET}
-  ${CYAN}list-ports${RESET}               List all detected serial ports
-  ${CYAN}text${RESET}      TEXT           Print a single line of text
-  ${CYAN}multiline${RESET} [FILE]         Print multiple lines from a file or stdin
-  ${CYAN}image${RESET}     PATH           Print an image file (PNG, JPG, BMP …)
-  ${CYAN}qr${RESET}        DATA           Print a QR code
-  ${CYAN}barcode${RESET}   DATA           Print a barcode (Code128 / Code39)
-  ${CYAN}feed${RESET}      [LINES]        Feed blank lines (default 3)
-  ${CYAN}cut${RESET}                      Cut the paper
-  ${CYAN}reset${RESET}                    Initialise printer (ESC @)
-  ${CYAN}demo${RESET}                     Print a full test receipt
+  ${CYAN}text${RESET}     "Hello World"          Print plain text
+  ${CYAN}barcode${RESET}  "123456789"            Print text as a scannable barcode
+  ${CYAN}qr${RESET}       "https://example.com"  Print text as a QR code
+  ${CYAN}demo${RESET}                            Print a test page (run this first!)
+  ${CYAN}ports${RESET}                           List available serial ports
+  ${CYAN}cut${RESET}                             Cut the paper
 
-  Run ${BOLD}./printer help COMMAND${RESET} for detailed help on any command.
-
-${BOLD}TEXT OPTIONS${RESET}  (for the 'text' command)
-  -a, --align left|center|right    Horizontal alignment  [default: left]
-  -s, --size  normal|double-h|double-w|double
-                                   Character size        [default: normal]
-  --bold / --no-bold               Bold (double-strike)
-  --underline / --no-underline     Underline
-  --cut / --no-cut                 Cut after printing    [default: no-cut]
-
-${BOLD}SIZE VALUES${RESET}
-  normal    Standard 8×16 dot character
-  double-h  Double height only  (16×16 dots)
-  double-w  Double width only   (16×32 dots, ~16 chars per line)
-  double    Double height AND width
+${BOLD}OPTIONS${RESET}  (add after your text)
+  --bold    Bold text  (text command only)
+  --center  Centre the text on the paper  (text command only)
+  --no-cut  Keep paper attached after printing  (default: auto-cut)
 
 ${BOLD}EXAMPLES${RESET}
-  # Find the right serial port
-  ./printer list-ports
+  ./thermal-printer text "Hello, World!"
+  ./thermal-printer text "Total: \$9.99" --bold --center
+  ./thermal-printer text "See you soon!" --no-cut
+  ./thermal-printer barcode "123456789012"
+  ./thermal-printer qr "https://example.com"
+  ./thermal-printer demo
 
-  # Quick connection test — prints a full demo receipt
-  ./printer demo
-
-  # Print text with formatting
-  ./printer text "Hello, World!"
-  ./printer text "RECEIPT" --align center --bold --size double-w --cut
-  ./printer text "Thank you!" --align center --underline --cut
-
-  # Print multiple lines from a file
-  ./printer multiline receipt.txt
-  ./printer multiline receipt.txt --align center
-
-  # Pipe text from another command
-  echo -e "Line 1\nLine 2\nLine 3" | ./printer multiline -
-
-  # Print an image
-  ./printer image logo.png
-  ./printer image photo.jpg --no-cut
-
-  # Print a QR code
-  ./printer qr "https://github.com/gkrangan/embedded-thermal-printer"
-  ./printer qr "https://example.com" --size 8
-
-  # Print a barcode
-  ./printer barcode "123456789012"
-  ./printer barcode "ITEM-001" --type code39 --height 80
-
-  # Paper control
-  ./printer feed
-  ./printer feed 5
-  ./printer cut
-  ./printer cut --full
-
-  # Use a custom port / baud
-  ./printer --port /dev/cu.usbserial-AB1234 --baud 19200 demo
-
-${BOLD}TROUBLESHOOTING${RESET}
-  Nothing prints       → Run 'list-ports', confirm port, try --baud 19200
-  Garbled output       → TX/RX wires may be swapped — cross them over
-  Paper feeds, no text → Power issue; use a dedicated 5V/2A+ supply
-  Permission denied    → On Linux: sudo usermod -aG dialout \$USER
-
-${BOLD}FILES${RESET}
-  cli.py              Python CLI (entry point)
-  gui.py              CustomTkinter GUI  (run: .venv/bin/python gui.py)
-  thermal_printer/    Printer library (ESC/POS, image conversion)
-  requirements.txt    Python dependencies
-  .venv/              Auto-created virtual environment
+${DIM}Not working? Run './thermal-printer ports' to confirm the USB adapter is detected.${RESET}
 
 EOF
 }
 
-# ── Setup: venv + dependencies ───────────────────────────────────────────────
-
+# ── First-run setup: create venv + install dependencies ──────────────────────
 setup() {
-    # Find a usable Python 3.10+
-    PYTHON_BIN=""
-    for candidate in python3.12 python3.11 python3.10 python3 python; do
-        if command -v "$candidate" &>/dev/null; then
-            ver=$("$candidate" -c "import sys; print(sys.version_info >= (3,10))" 2>/dev/null || echo "False")
-            if [[ "$ver" == "True" ]]; then
-                PYTHON_BIN="$candidate"
-                break
+    if [ ! -x "$PYTHON" ]; then
+        PYTHON_BIN=""
+        for candidate in python3.12 python3.11 python3.10 python3; do
+            if command -v "$candidate" &>/dev/null; then
+                ok=$("$candidate" -c "import sys; print(sys.version_info>=(3,10))" 2>/dev/null || echo False)
+                if [ "$ok" = "True" ]; then PYTHON_BIN="$candidate"; break; fi
             fi
+        done
+        if [ -z "$PYTHON_BIN" ]; then
+            echo "Error: Python 3.10+ not found. Install with: brew install python@3.12" >&2
+            exit 1
         fi
-    done
-
-    if [[ -z "$PYTHON_BIN" ]]; then
-        error "Python 3.10 or newer is required but was not found."
-        error "Install it from https://www.python.org/downloads/ or via Homebrew:"
-        error "  brew install python@3.12"
-        exit 1
+        echo "First run — setting up environment..."
+        "$PYTHON_BIN" -m venv "$VENV_DIR" && echo "Done."
     fi
 
-    # Create venv if it doesn't exist or is broken
-    if [[ ! -x "$PYTHON" ]]; then
-        info "Creating virtual environment with $PYTHON_BIN …"
-        "$PYTHON_BIN" -m venv "$VENV_DIR"
-        success "Virtual environment created at .venv/"
-    fi
-
-    # Install / upgrade dependencies if requirements.txt is newer than the marker
-    MARKER="$VENV_DIR/.installed_marker"
-    if [[ ! -f "$MARKER" ]] || [[ "$REQUIREMENTS" -nt "$MARKER" ]]; then
-        info "Installing dependencies from requirements.txt …"
-        "$PIP" install --quiet --upgrade pip
-        "$PIP" install --quiet -r "$REQUIREMENTS"
+    MARKER="$VENV_DIR/.installed"
+    if [ ! -f "$MARKER" ] || [ "$REQUIREMENTS" -nt "$MARKER" ]; then
+        echo "Installing dependencies..."
+        "$PYTHON" -m pip install --quiet --upgrade pip
+        "$PYTHON" -m pip install --quiet -r "$REQUIREMENTS"
         touch "$MARKER"
-        success "Dependencies installed."
+        echo "Done."
     fi
 }
 
+# ── Parse simple options into cli.py flags ────────────────────────────────────
+parse_opts() {
+    # Outputs flags for cli.py based on --bold / --center / --no-cut
+    # Defaults: auto-cut on, no bold, left align
+    local cut_flag="--cut"
+    local bold_flag=""
+    local align_flag=""
+    for arg in "$@"; do
+        case "$arg" in
+            --bold)   bold_flag="--bold" ;;
+            --center) align_flag="--align center" ;;
+            --no-cut) cut_flag="--no-cut" ;;
+            *) echo "Unknown option: $arg" >&2; echo "Run './thermal-printer help' for usage." >&2; exit 1 ;;
+        esac
+    done
+    echo "$bold_flag $align_flag $cut_flag"
+}
+
 # ── Entry point ───────────────────────────────────────────────────────────────
+CMD="${1:-}"
 
-# Intercept our own help before touching Python
-if [[ $# -eq 0 ]] || [[ "${1:-}" == "help" && $# -eq 1 ]]; then
-    show_help
-    exit 0
-fi
-
-# 'printer help COMMAND' → delegate to Click's --help for that command
-if [[ "${1:-}" == "help" && $# -ge 2 ]]; then
-    setup
-    shift                           # drop "help"
-    CMD="$1"; shift                 # capture command name
-    exec "$PYTHON" "$CLI" "$CMD" --help "$@"
-fi
-
-# Global --help / -h before any command
-if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
-    show_help
-    exit 0
-fi
-
-setup
-exec "$PYTHON" "$CLI" "$@"
+case "$CMD" in
+    help|--help|-h|"")
+        show_help
+        ;;
+    ports)
+        setup
+        "$PYTHON" "$CLI" list-ports
+        ;;
+    cut)
+        setup
+        "$PYTHON" "$CLI" cut
+        ;;
+    demo)
+        setup
+        "$PYTHON" "$CLI" demo
+        ;;
+    text)
+        [ $# -lt 2 ] && { echo "Usage: ./thermal-printer text \"your text\" [--bold] [--center] [--no-cut]"; exit 1; }
+        DATA="$2"; shift 2
+        # shellcheck disable=SC2046
+        "$PYTHON" "$CLI" text "$DATA" $(parse_opts "$@")
+        ;;
+    barcode)
+        [ $# -lt 2 ] && { echo "Usage: ./thermal-printer barcode \"123456789\"  [--no-cut]"; exit 1; }
+        DATA="$2"; shift 2
+        CUT="--cut"; for a in "$@"; do [ "$a" = "--no-cut" ] && CUT="--no-cut"; done
+        "$PYTHON" "$CLI" barcode "$DATA" $CUT
+        ;;
+    qr)
+        [ $# -lt 2 ] && { echo "Usage: ./thermal-printer qr \"https://example.com\"  [--no-cut]"; exit 1; }
+        DATA="$2"; shift 2
+        CUT="--cut"; for a in "$@"; do [ "$a" = "--no-cut" ] && CUT="--no-cut"; done
+        "$PYTHON" "$CLI" qr "$DATA" $CUT
+        ;;
+    *)
+        echo "Unknown command: '$CMD'"
+        echo "Run './thermal-printer help' to see available commands."
+        exit 1
+        ;;
+esac
