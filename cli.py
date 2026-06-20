@@ -311,9 +311,9 @@ def print_qr(ctx, data, size, cut):
 @click.argument("data", metavar="DATA")
 @click.option(
     "--type", "btype",
-    default="code128",
+    default="code39",
     show_default=True,
-    type=click.Choice(["code128", "code39"]),
+    type=click.Choice(["code39", "code128"]),
     help=(
         "Barcode symbology.  "
         "code128 supports all ASCII characters (default).  "

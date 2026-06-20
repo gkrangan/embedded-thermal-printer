@@ -140,17 +140,23 @@ class ThermalPrinter:
 
     def print_qr(self, data: str, size: int = 6) -> None:
         """Print a QR code centred on the page."""
+        import time
         self._write(escpos.set_align(Align.CENTER))
         self._write(escpos.qr_code(data, size))
         self._write(escpos.LF)
+        time.sleep(1.5)  # printer needs time to render QR before next command
         self._write(escpos.set_align(Align.LEFT))
 
-    def print_barcode(self, data: str, barcode_type: int = escpos.BARCODE_CODE128,
-                      height: int = 50) -> None:
-        self._write(escpos.set_align(Align.CENTER))
+    # Code39 limits confirmed on MC206H: 8 chars max fits paper, HRI shows max 7 chars
+    BARCODE_MAX_LEN = 7
+
+    def print_barcode(self, data: str, barcode_type: int = escpos.BARCODE_CODE39,
+                      height: int = 80) -> None:
+        import time
+        # No alignment command before barcode — MC206H drops barcode if ESC a precedes it
         self._write(escpos.barcode(data, barcode_type, height))
         self._write(escpos.LF)
-        self._write(escpos.set_align(Align.LEFT))
+        time.sleep(1.5)
 
     # ------------------------------------------------------------------
     # Port discovery

@@ -28,7 +28,7 @@ ${BOLD}USAGE${RESET}
 
 ${BOLD}COMMANDS${RESET}
   ${CYAN}text${RESET}     "Hello World"          Print plain text
-  ${CYAN}barcode${RESET}  "123456789"            Print text as a scannable barcode
+  ${CYAN}barcode${RESET}  "1234567"              Print text as a barcode (max 7 chars; longer data prints as QR)
   ${CYAN}qr${RESET}       "https://example.com"  Print text as a QR code
   ${CYAN}demo${RESET}                            Print a test page (run this first!)
   ${CYAN}ports${RESET}                           List available serial ports
@@ -124,10 +124,15 @@ case "$CMD" in
         "$PYTHON" "$CLI" text "$DATA" $(parse_opts "$@")
         ;;
     barcode)
-        [ $# -lt 2 ] && { echo "Usage: ./thermal-printer barcode \"123456789\"  [--no-cut]"; exit 1; }
+        [ $# -lt 2 ] && { echo "Usage: ./thermal-printer barcode \"12345678\"  [--no-cut]"; exit 1; }
         DATA="$2"; shift 2
         CUT="--cut"; for a in "$@"; do [ "$a" = "--no-cut" ] && CUT="--no-cut"; done
-        "$PYTHON" "$CLI" barcode "$DATA" $CUT
+        if [ "${#DATA}" -gt 7 ]; then
+            echo "Note: barcode data too long (max 7 chars on this printer). Printing as QR code instead."
+            "$PYTHON" "$CLI" qr "$DATA" $CUT
+        else
+            "$PYTHON" "$CLI" barcode "$DATA" $CUT
+        fi
         ;;
     qr)
         [ $# -lt 2 ] && { echo "Usage: ./thermal-printer qr \"https://example.com\"  [--no-cut]"; exit 1; }

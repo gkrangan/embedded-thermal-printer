@@ -87,15 +87,16 @@ def qr_code(data: str, size: int = 6) -> bytes:
     cmd += GS + b"(k" + bytes([3, 0, 49, 81, 48])              # print
     return cmd
 
-# Barcode types
-BARCODE_CODE39 = 4
-BARCODE_CODE128 = 73
+# Barcode — NUL-terminated old-style format (confirmed on MC206H)
+# Code39 works at all lengths. Code128 (type 6) only reliable up to 6 chars on this printer.
+BARCODE_CODE39  = 4
+BARCODE_CODE128 = 6
 
-def barcode(data: str, barcode_type: int = BARCODE_CODE128,
-            height: int = 50, hri: int = 2) -> bytes:
-    """Print a barcode. hri: 0=none,1=above,2=below,3=both."""
-    encoded = data.encode("ascii")
-    cmd  = GS + b"h" + bytes([height])        # barcode height
-    cmd += GS + b"H" + bytes([hri])           # HRI position
-    cmd += GS + b"k" + bytes([barcode_type, len(encoded)]) + encoded
+def barcode(data: str, barcode_type: int = BARCODE_CODE39,
+            height: int = 80, hri: int = 1) -> bytes:
+    """Print a barcode. hri: 0=none, 1=above, 2=below."""
+    encoded = data.upper().encode("ascii")  # Code39 requires uppercase
+    cmd  = GS + b"h" + bytes([height])
+    cmd += GS + b"H" + bytes([hri])
+    cmd += GS + b"k" + bytes([barcode_type]) + encoded + NUL
     return cmd
