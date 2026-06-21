@@ -8,19 +8,72 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError
 
 
-def _fetch_page_title(url: str, timeout: int = 5) -> str:
-    """Fetch a URL and return the page <title>, or empty string on any failure."""
+def _fetch_page_title(url: str, timeout: int = 6) -> str:
+    """
+    Fetch a URL and return the most descriptive title available.
+    Handles regular sites, YouTube, GitHub, Reddit, Wikipedia, etc.
+    Returns empty string on any failure.
+    """
     try:
-        req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+
+        # YouTube: extract video ID and use the oEmbed API (no scraping needed)
+        yt = re.search(
+            r"(?:youtube\.com/watch\?.*v=|youtu\.be/)([\w-]+)", url)
+        if yt:
+            api = f"https://www.youtube.com/oembed?url={url}&format=json"
+            with urlopen(Request(api, headers=headers), timeout=timeout) as r:
+                import json
+                return json.loads(r.read())["title"][:48]
+
+        req = Request(url, headers=headers)
         with urlopen(req, timeout=timeout) as resp:
-            # Read only the first 8KB — enough to find <title>
-            html = resp.read(8192).decode("utf-8", errors="ignore")
-        match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
-        if match:
-            title = re.sub(r"\s+", " ", match.group(1)).strip()
-            return title[:48]  # cap at 48 chars to fit 58mm paper
+            # Read up to 64KB — GitHub buries og:title deep in the page
+            html = resp.read(65536).decode("utf-8", errors="ignore")
+
+        def _first(*patterns):
+            for pat in patterns:
+                m = re.search(pat, html, re.IGNORECASE | re.DOTALL)
+                if m:
+                    return re.sub(r"\s+", " ", m.group(1)).strip()
+            return None
+
+        title = (
+            # og:title covers most modern sites (Reddit, GitHub, etc.)
+            _first(
+                r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']{1,200})["\']',
+                r'<meta[^>]+content=["\']([^"\']{1,200})["\'][^>]+property=["\']og:title["\']',
+            )
+            or
+            # twitter:title as fallback
+            _first(
+                r'<meta[^>]+name=["\']twitter:title["\'][^>]+content=["\']([^"\']{1,200})["\']',
+                r'<meta[^>]+content=["\']([^"\']{1,200})["\'][^>]+name=["\']twitter:title["\']',
+            )
+            or
+            # Plain <title> tag — strip trailing site names
+            _first(r"<title[^>]*>(.*?)</title>")
+        )
+
+        if title:
+            # Remove trailing " - SiteName" / " | SiteName" / " • SiteName"
+            title = re.sub(
+                r'\s*[-|•–—]\s*(YouTube|GitHub|Twitter|X|Reddit|Instagram|'
+                r'Facebook|LinkedIn|Wikipedia|Medium|TikTok|BBC|CNN|'
+                r'The Verge|Hacker News)\s*$',
+                "", title, flags=re.IGNORECASE,
+            ).strip()
+            return title[:48]
+
         return ""
-    except (URLError, Exception):
+    except Exception:
         return ""
 
 from . import escpos
@@ -165,17 +218,24 @@ class ThermalPrinter:
         self._write(escpos.qr_code(data, size))
         self._write(escpos.LF)
         time.sleep(1.5)  # printer needs time to render QR before next command
-        # If it's a URL, fetch and print the page title first
+        # If it's a URL, try to resolve the page title
         if data.startswith("http://") or data.startswith("https://"):
             title = _fetch_page_title(data)
             if title:
+                # Title resolved — print it in bold, skip the raw URL
                 self._write(escpos.set_bold(True))
                 self._write(title.encode("cp437", errors="replace") + escpos.LF)
                 self._write(escpos.set_bold(False))
-        # Print the URL/text in small font
-        self._write(escpos.set_font(escpos.Font.B))
-        self._write(data.encode("cp437", errors="replace") + escpos.LF)
-        self._write(escpos.set_font(escpos.Font.A))
+            else:
+                # Title fetch failed — fall back to printing the URL in small font
+                self._write(escpos.set_font(escpos.Font.B))
+                self._write(data.encode("cp437", errors="replace") + escpos.LF)
+                self._write(escpos.set_font(escpos.Font.A))
+        else:
+            # Not a URL — always print the raw text in small font
+            self._write(escpos.set_font(escpos.Font.B))
+            self._write(data.encode("cp437", errors="replace") + escpos.LF)
+            self._write(escpos.set_font(escpos.Font.A))
         self._write(escpos.set_align(Align.LEFT))
 
     # Code39 limits confirmed on MC206H: 8 chars max fits paper, HRI shows max 7 chars

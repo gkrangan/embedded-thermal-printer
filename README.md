@@ -106,7 +106,7 @@ Use the `thermal-printer` wrapper for everything. It creates a Python virtual en
 |---------|-------------|
 | `text "Hello World"` | Print plain text |
 | `barcode "1234567"` | Print as a barcode (max 7 chars — see notes below) |
-| `qr "https://example.com"` | Print as a QR code |
+| `qr "https://example.com"` | Print as a QR code with smart title resolution |
 | `demo` | Print a full test receipt |
 | `ports` | List available serial ports |
 | `cut` | Cut the paper |
@@ -131,9 +131,12 @@ Use the `thermal-printer` wrapper for everything. It creates a Python virtual en
 # Barcode (max 7 chars; longer data automatically prints as QR instead)
 ./thermal-printer barcode "1234567"
 
-# QR code (no length limit)
+# QR code — URLs resolve to a human-readable title printed below the code
 ./thermal-printer qr "https://github.com/gkrangan/embedded-thermal-printer"
-./thermal-printer qr "12345678901234"
+./thermal-printer qr "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+./thermal-printer qr "https://en.wikipedia.org/wiki/Thermal_printing"
+# Non-URL text — prints the raw text below the QR code
+./thermal-printer qr "ITEM-REF-20260620"
 
 # Utilities
 ./thermal-printer demo
@@ -179,6 +182,11 @@ Works correctly with standard ESC/POS text commands and a line-feed (`\x0a`) ter
 | Command | `GS ( k` — confirmed working |
 | Render delay | A **1.5 second delay** is required between the QR render command and the next command (feed/cut) |
 | Data length | No practical limit tested |
+| Title resolution | If data is a URL, the page title is fetched and printed in bold below the QR code instead of the raw URL |
+| YouTube | Uses the YouTube oEmbed API — returns the exact video title |
+| GitHub / Wikipedia / BBC etc. | Uses Open Graph `og:title` meta tag, falling back to `<title>` |
+| Title fetch failure | Falls back to printing the raw URL in small font |
+| Non-URL data | Raw text always printed in small font below the QR code |
 
 ---
 
