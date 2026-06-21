@@ -139,12 +139,16 @@ class ThermalPrinter:
         self._write(escpos.set_align(Align.LEFT))
 
     def print_qr(self, data: str, size: int = 6) -> None:
-        """Print a QR code centred on the page."""
+        """Print a QR code centred on the page, with the encoded text below it."""
         import time
         self._write(escpos.set_align(Align.CENTER))
         self._write(escpos.qr_code(data, size))
         self._write(escpos.LF)
         time.sleep(1.5)  # printer needs time to render QR before next command
+        # Print the encoded text in small font below the QR code
+        self._write(escpos.set_font(escpos.Font.B))
+        self._write(data.encode("cp437", errors="replace") + escpos.LF)
+        self._write(escpos.set_font(escpos.Font.A))
         self._write(escpos.set_align(Align.LEFT))
 
     # Code39 limits confirmed on MC206H: 8 chars max fits paper, HRI shows max 7 chars
