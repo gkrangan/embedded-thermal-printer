@@ -1,8 +1,27 @@
 """Core ThermalPrinter class: serial connection + high-level print methods."""
 
+import re
 import serial
 import serial.tools.list_ports
 from typing import Optional
+from urllib.request import urlopen, Request
+from urllib.error import URLError
+
+
+def _fetch_page_title(url: str, timeout: int = 5) -> str:
+    """Fetch a URL and return the page <title>, or empty string on any failure."""
+    try:
+        req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(req, timeout=timeout) as resp:
+            # Read only the first 8KB — enough to find <title>
+            html = resp.read(8192).decode("utf-8", errors="ignore")
+        match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+        if match:
+            title = re.sub(r"\s+", " ", match.group(1)).strip()
+            return title[:48]  # cap at 48 chars to fit 58mm paper
+        return ""
+    except (URLError, Exception):
+        return ""
 
 from . import escpos
 from .escpos import Align, Size, Font
@@ -139,13 +158,21 @@ class ThermalPrinter:
         self._write(escpos.set_align(Align.LEFT))
 
     def print_qr(self, data: str, size: int = 6) -> None:
-        """Print a QR code centred on the page, with the encoded text below it."""
+        """Print a QR code centred on the page, with the encoded text below it.
+        If data is a URL, also fetches and prints the page title."""
         import time
         self._write(escpos.set_align(Align.CENTER))
         self._write(escpos.qr_code(data, size))
         self._write(escpos.LF)
         time.sleep(1.5)  # printer needs time to render QR before next command
-        # Print the encoded text in small font below the QR code
+        # If it's a URL, fetch and print the page title first
+        if data.startswith("http://") or data.startswith("https://"):
+            title = _fetch_page_title(data)
+            if title:
+                self._write(escpos.set_bold(True))
+                self._write(title.encode("cp437", errors="replace") + escpos.LF)
+                self._write(escpos.set_bold(False))
+        # Print the URL/text in small font
         self._write(escpos.set_font(escpos.Font.B))
         self._write(data.encode("cp437", errors="replace") + escpos.LF)
         self._write(escpos.set_font(escpos.Font.A))
