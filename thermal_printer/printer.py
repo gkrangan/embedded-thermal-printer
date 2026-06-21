@@ -173,18 +173,26 @@ class ThermalPrinter:
         align: Align = Align.LEFT,
         bold: bool = False,
         underline: bool = False,
+        reverse: bool = False,
+        font: Font = Font.A,
         size: Size = Size.NORMAL,
         encoding: str = "cp437",
     ) -> None:
         """Print a line of text with optional formatting, followed by LF."""
         self._write(escpos.set_align(align))
+        self._write(escpos.set_font(font))
         self._write(escpos.set_bold(bold))
         self._write(escpos.set_underline(underline))
+        self._write(escpos.set_reverse(reverse))
         self._write(escpos.set_size(size))
         self._write(text.encode(encoding, errors="replace") + escpos.LF)
-        # Reset formatting
+        # Reset all formatting back to defaults
         self._write(escpos.set_bold(False))
         self._write(escpos.set_underline(False))
+        self._write(escpos.set_reverse(False))
+        self._write(escpos.set_size(Size.NORMAL))
+        self._write(escpos.set_font(Font.A))
+        self._write(escpos.set_align(Align.LEFT))
         self._write(escpos.set_size(Size.NORMAL))
         self._write(escpos.set_align(Align.LEFT))
 

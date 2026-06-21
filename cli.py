@@ -130,6 +130,18 @@ def list_ports():
     help="Print text with an underline.",
 )
 @click.option(
+    "--reverse/--no-reverse",
+    default=False,
+    help="Print white text on a black background.",
+)
+@click.option(
+    "--font", "-f",
+    default="a",
+    show_default=True,
+    type=click.Choice(["a", "b"]),
+    help="Font A = standard (~32 chars/line). Font B = condensed (~42 chars/line).",
+)
+@click.option(
     "--size", "-s",
     default="normal",
     show_default=True,
@@ -145,7 +157,7 @@ def list_ports():
     help="Perform a partial paper cut after printing.  Off by default for single lines.",
 )
 @click.pass_context
-def print_text(ctx, text, align, bold, underline, size, cut):
+def print_text(ctx, text, align, bold, underline, reverse, font, size, cut):
     """
     Print a single line of TEXT with optional formatting.
 
@@ -169,8 +181,11 @@ def print_text(ctx, text, align, bold, underline, size, cut):
     """
     p = _get_printer(ctx.obj["port"], ctx.obj["baud"])
     with p:
+        from thermal_printer.escpos import Font
         p.print_text(text, align=_ALIGN_MAP[align], bold=bold,
-                     underline=underline, size=_SIZE_MAP[size])
+                     underline=underline, reverse=reverse,
+                     font=Font.A if font == "a" else Font.B,
+                     size=_SIZE_MAP[size])
         if cut:
             p.cut()
     click.echo("Printed.")

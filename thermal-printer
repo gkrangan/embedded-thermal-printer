@@ -34,16 +34,29 @@ ${BOLD}COMMANDS${RESET}
   ${CYAN}ports${RESET}                           List available serial ports
   ${CYAN}cut${RESET}                             Cut the paper
 
-${BOLD}OPTIONS${RESET}  (add after your text)
-  --bold    Bold text  (text command only)
-  --center  Centre the text on the paper  (text command only)
-  --no-cut  Keep paper attached after printing  (default: auto-cut)
+${BOLD}TEXT OPTIONS${RESET}  (add after your text)
+  --bold       Bold / double-strike text
+  --underline  Underline the text
+  --reverse    White text on black background
+  --center     Centre the text on the paper
+  --right      Right-align the text
+  --font-a     Standard font  (default, ~32 chars/line)
+  --font-b     Condensed font (~42 chars/line, good for small print)
+  --tall       Double-height characters
+  --wide       Double-width characters (~16 chars/line)
+  --big        Double height AND width  (~16 chars/line)
+  --no-cut     Keep paper attached after printing  (default: auto-cut)
+
+  Options can be combined: --bold --underline --center --font-b
 
 ${BOLD}EXAMPLES${RESET}
   ./thermal-printer text "Hello, World!"
   ./thermal-printer text "Total: \$9.99" --bold --center
-  ./thermal-printer text "See you soon!" --no-cut
-  ./thermal-printer barcode "123456789012"
+  ./thermal-printer text "SALE" --big --center
+  ./thermal-printer text "* Limited offer *" --reverse --center
+  ./thermal-printer text "See you soon!" --underline --no-cut
+  ./thermal-printer text "Small print disclaimer..." --font-b
+  ./thermal-printer barcode "1234567"
   ./thermal-printer qr "https://example.com"
   ./thermal-printer demo
 
@@ -80,22 +93,33 @@ setup() {
     fi
 }
 
-# ── Parse simple options into cli.py flags ────────────────────────────────────
+# ── Parse text options into cli.py flags ─────────────────────────────────────
 parse_opts() {
-    # Outputs flags for cli.py based on --bold / --center / --no-cut
-    # Defaults: auto-cut on, no bold, left align
     local cut_flag="--cut"
     local bold_flag=""
+    local underline_flag=""
+    local reverse_flag=""
     local align_flag=""
+    local font_flag=""
+    local size_flag=""
     for arg in "$@"; do
         case "$arg" in
-            --bold)   bold_flag="--bold" ;;
-            --center) align_flag="--align center" ;;
-            --no-cut) cut_flag="--no-cut" ;;
+            --bold)      bold_flag="--bold" ;;
+            --underline) underline_flag="--underline" ;;
+            --reverse)   reverse_flag="--reverse" ;;
+            --center)    align_flag="--align center" ;;
+            --right)     align_flag="--align right" ;;
+            --font-a)    font_flag="--font a" ;;
+            --font-b)    font_flag="--font b" ;;
+            --tall)      size_flag="--size double-h" ;;
+            --wide)      size_flag="--size double-w" ;;
+            --big)       size_flag="--size double" ;;
+            --cut)       cut_flag="--cut" ;;
+            --no-cut)    cut_flag="--no-cut" ;;
             *) echo "Unknown option: $arg" >&2; echo "Run './thermal-printer help' for usage." >&2; exit 1 ;;
         esac
     done
-    echo "$bold_flag $align_flag $cut_flag"
+    echo "$bold_flag $underline_flag $reverse_flag $align_flag $font_flag $size_flag $cut_flag"
 }
 
 # ── Entry point ───────────────────────────────────────────────────────────────
