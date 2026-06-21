@@ -112,21 +112,40 @@ Use the `thermal-printer` wrapper for everything. It creates a Python virtual en
 | `cut` | Cut the paper |
 | `help` | Show usage |
 
-### Options
+### Text options
 
-| Option | Applies to | Description |
-|--------|-----------|-------------|
-| `--bold` | `text` | Bold text |
-| `--center` | `text` | Centre-align |
-| `--no-cut` | all | Keep paper attached after printing |
+All options can be combined freely.
+
+| Option | Description |
+|--------|-------------|
+| `--bold` | Bold / double-strike |
+| `--underline` | Underline |
+| `--reverse` | White text on black background |
+| `--center` | Centre-align |
+| `--right` | Right-align |
+| `--font-a` | Standard font — ~32 chars/line (default) |
+| `--font-b` | Condensed font — ~42 chars/line, good for small print |
+| `--tall` | Double-height characters |
+| `--wide` | Double-width characters (~16 chars/line) |
+| `--big` | Double height AND width (~16 chars/line) |
+| `--cut` / `--no-cut` | Cut paper after printing (default: cut) |
+
+> **Note:** Italic / cursive is not possible on thermal printers — they use fixed dot-matrix fonts (A and B) with no font rendering engine.
 
 ### Examples
 
 ```bash
-# Text
+# Basic text
 ./thermal-printer text "Hello, World!"
 ./thermal-printer text "Total: $9.99" --bold --center
-./thermal-printer text "See you soon!" --no-cut
+./thermal-printer text "See you soon!" --underline --no-cut
+
+# Formatting combinations
+./thermal-printer text "SALE" --big --center
+./thermal-printer text "* Limited offer *" --reverse --center
+./thermal-printer text "Small print disclaimer..." --font-b
+./thermal-printer text "WARNING" --bold --underline --reverse --center
+./thermal-printer text "HEADER" --font-a --tall --center
 
 # Barcode (max 7 chars; longer data automatically prints as QR instead)
 ./thermal-printer barcode "1234567"
@@ -135,7 +154,7 @@ Use the `thermal-printer` wrapper for everything. It creates a Python virtual en
 ./thermal-printer qr "https://github.com/gkrangan/embedded-thermal-printer"
 ./thermal-printer qr "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 ./thermal-printer qr "https://en.wikipedia.org/wiki/Thermal_printing"
-# Non-URL text — prints the raw text below the QR code
+# Non-URL text — raw text printed below the QR code
 ./thermal-printer qr "ITEM-REF-20260620"
 
 # Utilities
@@ -193,13 +212,17 @@ Works correctly with standard ESC/POS text commands and a line-feed (`\x0a`) ter
 ## API Usage (library)
 
 ```python
-from thermal_printer import ThermalPrinter, Align, Size
+from thermal_printer import ThermalPrinter, Align, Size, Font
 
 with ThermalPrinter("/dev/cu.usbserial-A1083DD0", baud=9600) as p:
-    p.print_text("RECEIPT", align=Align.CENTER, bold=True, size=Size.DOUBLE_W)
+    p.print_text("RECEIPT",   align=Align.CENTER, bold=True, size=Size.DOUBLE_W)
     p.print_divider()
     p.print_text("Item 1          $5.00")
-    p.print_text("Total           $5.00", bold=True)
+    p.print_text("Item 2          $3.50")
+    p.print_divider()
+    p.print_text("TOTAL           $8.50", bold=True, underline=True)
+    p.print_text("* Prices include tax", font=Font.B, align=Align.CENTER)
+    p.print_text("SPECIAL OFFER",  reverse=True, align=Align.CENTER)
     p.print_barcode("1234567")
     p.print_qr("https://example.com/receipt/123")
     p.cut()
