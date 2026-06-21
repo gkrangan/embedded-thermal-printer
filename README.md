@@ -36,20 +36,23 @@ On macOS the adapter enumerates as:
 
 ## Wiring
 
-The printer exposes a **4-wire JST connector** for the TTL interface. Pin order (left to right when facing the back of the printer):
+The printer exposes a **4-wire JST connector** for the TTL interface:
 
-| Printer wire | Signal | FTDI pin |
-|-------------|--------|----------|
+| Printer wire colour | Signal | FTDI pin |
+|--------------------|--------|----------|
+| Red | VCC | **Not connected** — power via barrel jack |
+| Yellow | TXD (printer transmits) | RXD |
+| White | RXD (printer receives) | TXD |
 | Black | GND | GND |
-| Yellow | RXD (printer receives) | TXD |
-| Red | TXD (printer transmits) | RXD |
-| — | VCC | Do **not** power from FTDI |
 
 > **Power the printer separately** from a 5V–9V DC supply via its barrel-jack connector. The FTDI 5V rail cannot supply enough current for the print head.
 
 ```
 Mac USB → FTDI adapter → jumper wires → printer TTL JST connector
-                                        GND↔GND  TX→RX  RX←TX
+                         FTDI TXD  ──→  White (RXD)
+                         FTDI RXD  ←──  Yellow (TXD)
+                         FTDI GND  ───  Black (GND)
+                                        Red (VCC) — leave unconnected
 ```
 
 ---
